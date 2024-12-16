@@ -1,0 +1,157 @@
+---
+title: "Final USDA NASS Data Cleaning first time update"
+author: "Yangyu Chen"
+date: "2024-10-28"
+output: pdf_document
+---
+
+```{r}
+# Load necessary libraries
+library(tidyverse)
+
+# Load the datasets
+census <- read.csv("census_clean_output.csv")
+survey <- read.csv("survey_clean_output.csv")
+
+# Explore dataset structures
+print("Census Dataset Structure:")
+str(census)
+
+print("Survey Dataset Structure:")
+str(survey)
+
+# Filter survey data for California-specific information
+california_data <- subset(survey, toupper(State) == "CALIFORNIA")
+
+# Exclude unspecified or total values in `Chemical_Name`
+cleaned_data <- subset(california_data, 
+                       !(Chemical_Name %in% c("NOT SPECIFIED", "TOTAL")))
+
+# Focus on data from the past five years (2018-2023)
+recent_data <- cleaned_data[cleaned_data$Year >= 2018, ]
+
+# Check if recent_data is empty
+if (nrow(recent_data) == 0) {
+  stop("No data available after applying the filters.")
+}
+
+# Summary and visualization of survey data
+
+# Summarize chemical usage by group and year
+usage_summary <- recent_data %>%
+  group_by(Chemical_Group, Year) %>%
+  summarise(Total_Usage = sum(Value, na.rm = TRUE), .groups = 'drop')
+
+# Plot chemical usage by category
+ggplot(usage_summary, aes(x = Chemical_Group, y = Total_Usage, fill = as.factor(Year))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Chemical Usage in California (2018-2023)",
+       x = "Type of Chemical Group",
+       y = "Total Usage (Value)",
+       fill = "Year") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+# Analyze top chemicals for specific years
+chemicals_by_year <- recent_data %>%
+  group_by(Chemical_Name, Year) %>%
+  summarise(Total_Usage = sum(Value, na.rm = TRUE), .groups = 'drop')
+
+top_chemicals <- function(year, n = 10) {
+  chemicals_by_year %>%
+    filter(Year == year) %>%
+    arrange(desc(Total_Usage)) %>%
+    head(n)
+}
+
+top_2023 <- top_chemicals(2023)
+top_2021 <- top_chemicals(2021)
+
+# Combine data for comparison
+comparison_data <- bind_rows(top_2023, top_2021)
+
+# Plot top chemicals for 2021 and 2023
+ggplot(comparison_data, aes(x = reorder(Chemical_Name, -Total_Usage), 
+                            y = Total_Usage, fill = as.factor(Year))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Top 10 Chemicals by Usage (2021 & 2023)",
+       x = "Chemical Name",
+       y = "Total Usage (Value)",
+       fill = "Year") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+# Filter for insecticides
+insecticides <- recent_data %>%
+  filter(Chemical_Group == "INSECTICIDE") %>%
+  group_by(Chemical_Name, Year) %>%
+  summarise(Total_Usage = sum(Value, na.rm = TRUE), .groups = 'drop')
+
+top_insecticides <- function(year, n = 10) {
+  insecticides %>%
+    filter(Year == year) %>%
+    arrange(desc(Total_Usage)) %>%
+    head(n)
+}
+
+insecticides_2023 <- top_insecticides(2023)
+insecticides_2021 <- top_insecticides(2021)
+
+# Combine and plot insecticide data
+insecticide_comparison <- bind_rows(insecticides_2023, insecticides_2021)
+
+ggplot(insecticide_comparison, aes(x = reorder(Chemical_Name, -Total_Usage), 
+                                   y = Total_Usage, fill = as.factor(Year))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Top 10 Insecticides (2021 & 2023)",
+       x = "Chemical Name",
+       y = "Total Usage (Value)",
+       fill = "Year") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+# Total usage trend over years
+total_usage <- recent_data %>%
+  group_by(Year) %>%
+  summarise(Annual_Usage = sum(Value, na.rm = TRUE), .groups = 'drop')
+
+ggplot(total_usage, aes(x = Year, y = Annual_Usage)) +
+  geom_line(color = "darkblue", size = 1.2) +
+  labs(title = "Total Chemical Usage in California (2018-2023)",
+       x = "Year",
+       y = "Total Usage (Value)") +
+  theme_minimal()
+
+# Census Data Analysis
+
+# Quick summary of census data
+census_summary <- census %>%
+  summarise(across(where(is.numeric), list(mean = mean, sd = sd, median = median), na.rm = TRUE))
+
+print("Census Data Summary:")
+print(census_summary)
+
+# Check unique values in census for specific fields
+unique_census_fields <- lapply(census, unique)
+print("Unique Census Fields:")
+print(unique_census_fields)
+
+# Correlation analysis (if applicable)
+if (sum(sapply(census, is.numeric)) > 1) {
+  numeric_census <- census %>% select(where(is.numeric))
+  census_corr <- cor(numeric_census, use = "complete.obs")
+  print("Census Correlation Matrix:")
+  print(census_corr)
+}
+
+# Visualization for census data (e.g., population trends, economic trends)
+# Adjust field names based on actual data
+if ("Year" %in% colnames(census) & "Population" %in% colnames(census)) {
+  ggplot(census, aes(x = Year, y = Population)) +
+    geom_line(color = "darkgreen") +
+    labs(title = "Population Trends Over Years",
+         x = "Year",
+         y = "Population") +
+    theme_minimal()
+}
+```
